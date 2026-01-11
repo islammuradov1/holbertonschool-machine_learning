@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+
 import matplotlib.pyplot as plt
 import pandas as pd
 from_file = __import__('2-from_file').from_file
@@ -11,6 +12,7 @@ df = df.rename(columns={"Timestamp": "Date"})
 df["Date"] = pd.to_datetime(df["Date"], unit="s")
 df = df.set_index("Date")
 df["Close"] = df["Close"].ffill()
+
 df[["High", "Low", "Open"]] = df[["High", "Low", "Open"]].fillna(df["Close"])
 df[["Volume_(BTC)", "Volume_(Currency)"]] = (
     df[["Volume_(BTC)", "Volume_(Currency)"]].fillna(0)
