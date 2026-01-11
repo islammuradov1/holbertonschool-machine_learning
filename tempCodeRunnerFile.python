@@ -1,0 +1,4 @@
+import pandas as pd
+df = pd.DataFrame({'Low':[100,200,300,400,500], 'Close':[150,None,350,None,550]})
+for row in df.itertuples():
+    print(row)
