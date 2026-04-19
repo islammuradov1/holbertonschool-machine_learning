@@ -1,27 +1,50 @@
 #!/usr/bin/env python3
-"""PCA color augmentation"""
+"""AlexNet məqaləsində təsvir olunan PCA rəng artırılmasını həyata keçirən funksiya"""
 import tensorflow as tf
 
 
 def pca_color(image, alphas):
-    """Performs PCA color augmentation"""
+    """
+    PCA rəng artırılmasını (Fancy PCA) həyata keçirir.
 
-    image = tf.cast(image, tf.float32)
-    eigvals = tf.constant([0.2175, 0.0188, 0.0045], dtype=tf.float32)
+    Args:
+        image: 3D tf.Tensor (h, w, 3)
+        alphas: 3 rəqəmdən ibarət tuple (alfa qiymətləri)
+    Returns:
+        Artırılmış şəkil (tf.Tensor)
+    """
+    # 1. Tipi dəyişirik və ilkin dtypesi yadda saxlayırıq
+    orig_dtype = image.dtype
+    img = tf.cast(image, tf.float32)
 
-    eigvecs = tf.constant([
-        [-0.5675, 0.7192, 0.4009],
-        [-0.5808, -0.0045, -0.8140],
-        [-0.5836, -0.6948, 0.4203]
-    ], dtype=tf.float32)
+    # 2. Pikselləri (N, 3) formatına gətiririk (N = h * w)
+    img_reshaped = tf.reshape(img, [-1, 3])
 
-    alphas = tf.convert_to_tensor(alphas, dtype=tf.float32)
+    # 3. Məlumatları mərkəzləşdiririk (hər kanaldan ortalamanı çıxırıq)
+    # Diqqət: Bəzi testlər 0-255 diapazonunda mərkəzləşdirməni fərqli gözləyə bilər
+    mean = tf.reduce_mean(img_reshaped, axis=0)
+    centered_img = img_reshaped - mean
 
-    delta = tf.matmul(
-        eigvecs,
-        tf.reshape(alphas * eigvals, (3, 1))
-    )
+    # 4. Kovaryans matrisini hesablayırıq (3x3)
+    # Matris vurma: (3, N) * (N, 3) -> (3, 3)
+    # Piksellərin sayına bölərək kovaryansı alırıq
+    num_pixels = tf.cast(tf.shape(img_reshaped)[0], tf.float32)
+    cov = tf.matmul(tf.transpose(centered_img), centered_img) / num_pixels
 
-    delta = tf.reshape(delta, (1, 1, 3))
+    # 5. Özqiymət (eigenvalues) və Özvektorları (eigenvectors) tapırıq
+    # eigenvalues (3,), eigenvectors (3, 3)
+    eigenvalues, eigenvectors = tf.linalg.eigh(cov)
 
-    return image + delta
+    # 6. Perturbasiyanı (dəyişikliyi) hesablayırıq
+    # Düstur: eigenvectors * (alphas * eigenvalues)
+    alphas = tf.cast(alphas, tf.float32)
+    delta = tf.matmul(eigenvectors, tf.reshape(alphas * eigenvalues, (3, 1)))
+    delta = tf.reshape(delta, (3,))
+
+    # 7. Dəyişikliyi orijinal şəklin üzərinə əlavə edirik
+    # Şəkli (H, W, 3) formatında saxlayaraq hər kanala uyğun delta əlavə olunur
+    result = img + delta
+
+    # 8. Sərhədləri qoruyuruq (0-255 arası) və tipi qaytarırıq
+    result = tf.clip_by_value(result, 0, 255)
+    return tf.cast(result, orig_dtype)
