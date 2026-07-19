@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Defines the Dataset class for loading and preparing a translation dataset"""
+import tensorflow as tf
 import transformers
 from setup import load_pt2en
 
@@ -7,12 +8,19 @@ from setup import load_pt2en
 class Dataset:
     """Loads and preps a dataset for machine translation"""
 
-    def __init__(self):
+    def __init__(self, batch_size, max_len):
         """Initializes the Dataset instance
 
+        Args:
+            batch_size: the batch size for training/validation
+            max_len: the maximum number of tokens allowed per example
+                sentence
+
         Sets:
-            data_train: the ted_hrlr_translate/pt_to_en train split
-            data_valid: the ted_hrlr_translate/pt_to_en validation split
+            data_train: the ted_hrlr_translate/pt_to_en train split,
+                tokenized and pipelined for training
+            data_valid: the ted_hrlr_translate/pt_to_en validation
+                split, tokenized and pipelined for validation
             tokenizer_pt: the Portuguese tokenizer created from the
                 training set
             tokenizer_en: the English tokenizer created from the
@@ -22,6 +30,22 @@ class Dataset:
         self.data_valid = load_pt2en('validation')
         self.tokenizer_pt, self.tokenizer_en = self.tokenize_dataset(
             self.data_train)
+        self.data_train = self.data_train.map(self.tf_encode)
+        self.data_valid = self.data_valid.map(self.tf_encode)
+
+        def filter_max_len(pt, en):
+            return tf.logical_and(tf.size(pt) <= max_len,
+                                  tf.size(en) <= max_len)
+
+        self.data_train = self.data_train.filter(filter_max_len)
+        self.data_train = self.data_train.cache()
+        self.data_train = self.data_train.shuffle(20000)
+        self.data_train = self.data_train.padded_batch(batch_size)
+        self.data_train = self.data_train.prefetch(
+            tf.data.experimental.AUTOTUNE)
+
+        self.data_valid = self.data_valid.filter(filter_max_len)
+        self.data_valid = self.data_valid.padded_batch(batch_size)
 
     def tokenize_dataset(self, data):
         """Creates sub-word tokenizers for our dataset
@@ -80,5 +104,24 @@ class Dataset:
 
         pt_tokens = [pt_vocab_size] + pt_tokens + [pt_vocab_size + 1]
         en_tokens = [en_vocab_size] + en_tokens + [en_vocab_size + 1]
+
+        return pt_tokens, en_tokens
+
+    def tf_encode(self, pt, en):
+        """Acts as a tensorflow wrapper for the encode instance method
+
+        Args:
+            pt: the tf.Tensor containing the Portuguese sentence
+            en: the tf.Tensor containing the corresponding English
+                sentence
+
+        Returns:
+            pt_tokens, en_tokens: the Portuguese and English tokens as
+                tf.Tensors
+        """
+        pt_tokens, en_tokens = tf.py_function(
+            self.encode, [pt, en], [tf.int64, tf.int64])
+        pt_tokens.set_shape([None])
+        en_tokens.set_shape([None])
 
         return pt_tokens, en_tokens

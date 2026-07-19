@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Defines the Dataset class for loading and preparing a translation dataset"""
+import tensorflow as tf
 import transformers
 from setup import load_pt2en
 
@@ -11,8 +12,10 @@ class Dataset:
         """Initializes the Dataset instance
 
         Sets:
-            data_train: the ted_hrlr_translate/pt_to_en train split
-            data_valid: the ted_hrlr_translate/pt_to_en validation split
+            data_train: the ted_hrlr_translate/pt_to_en train split,
+                tokenized
+            data_valid: the ted_hrlr_translate/pt_to_en validation
+                split, tokenized
             tokenizer_pt: the Portuguese tokenizer created from the
                 training set
             tokenizer_en: the English tokenizer created from the
@@ -22,6 +25,8 @@ class Dataset:
         self.data_valid = load_pt2en('validation')
         self.tokenizer_pt, self.tokenizer_en = self.tokenize_dataset(
             self.data_train)
+        self.data_train = self.data_train.map(self.tf_encode)
+        self.data_valid = self.data_valid.map(self.tf_encode)
 
     def tokenize_dataset(self, data):
         """Creates sub-word tokenizers for our dataset
@@ -80,5 +85,24 @@ class Dataset:
 
         pt_tokens = [pt_vocab_size] + pt_tokens + [pt_vocab_size + 1]
         en_tokens = [en_vocab_size] + en_tokens + [en_vocab_size + 1]
+
+        return pt_tokens, en_tokens
+
+    def tf_encode(self, pt, en):
+        """Acts as a tensorflow wrapper for the encode instance method
+
+        Args:
+            pt: the tf.Tensor containing the Portuguese sentence
+            en: the tf.Tensor containing the corresponding English
+                sentence
+
+        Returns:
+            pt_tokens, en_tokens: the Portuguese and English tokens as
+                tf.Tensors
+        """
+        pt_tokens, en_tokens = tf.py_function(
+            self.encode, [pt, en], [tf.int64, tf.int64])
+        pt_tokens.set_shape([None])
+        en_tokens.set_shape([None])
 
         return pt_tokens, en_tokens
